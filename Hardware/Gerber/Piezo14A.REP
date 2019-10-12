@@ -1,0 +1,209 @@
+*************************************************************
+FileName = Piezo14A.GBR
+AutoAperture = True
+*************************************************************
+Generating : Top Layer
+      File : Piezo14A.GTL
+
+    Adding Layer      : Top Layer
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D11
+    D12
+    D13
+    D14
+    D15
+    D16
+    D17
+    D18
+    D19
+    D20
+    D21
+    D22
+    D23
+    D24
+    D25
+    D26
+    D27
+*************************************************************
+
+*************************************************************
+Generating : Bottom Layer
+      File : Piezo14A.GBL
+
+    Adding Layer      : Bottom Layer
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D19
+    D20
+    D22
+    D23
+    D24
+    D25
+    D26
+    D27
+    D28
+*************************************************************
+
+*************************************************************
+Generating : Top Overlay
+      File : Piezo14A.GTO
+
+    Adding Layer      : Top Overlay
+
+    Adding Layer      : Outline
+
+
+Used DCodes :
+    D21
+    D29
+    D30
+    D31
+    D32
+    D33
+    D34
+    D35
+*************************************************************
+
+*************************************************************
+Generating : Top Paste
+      File : Piezo14A.GTP
+
+    Adding Layer      : Top Paste
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Top Layer
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D11
+    D12
+    D13
+    D14
+    D15
+    D16
+    D17
+    D18
+*************************************************************
+
+*************************************************************
+Generating : Top Solder
+      File : Piezo14A.GTS
+
+    Adding Layer      : Top Solder
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Top Layer
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D36
+    D37
+    D38
+    D39
+    D40
+    D41
+    D42
+    D43
+    D44
+    D45
+    D46
+    D47
+    D48
+    D49
+    D50
+*************************************************************
+
+*************************************************************
+Generating : Bottom Solder
+      File : Piezo14A.GBS
+
+    Adding Layer      : Bottom Solder
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Bottom Layer
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D45
+    D46
+    D47
+    D48
+    D49
+    D50
+*************************************************************
+
+*************************************************************
+Generating : Bottom Paste
+      File : Piezo14A.GBP
+
+    Adding Layer      : Bottom Paste
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Bottom Layer
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+*************************************************************
+
+*************************************************************
+Generating : Bottom Overlay
+      File : Piezo14A.GBO
+
+    Adding Layer      : Bottom Overlay
+
+    Adding Layer      : Outline
+
+
+Used DCodes :
+*************************************************************
+
+*************************************************************
+Generating : Keep-Out Layer
+      File : Piezo14A.GKO
+
+    Adding Layer      : Keep-Out Layer
+
+    Adding Layer      : Outline
+
+
+Used DCodes :
+    D21
+*************************************************************
+
+*************************************************************
+Generating : Outline
+      File : Piezo14A.Outline
+
+    Adding Layer      : Outline
+
+    Adding Layer      : Outline
+
+
+Used DCodes :
+*************************************************************
+

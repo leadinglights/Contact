@@ -1,0 +1,17 @@
+---------------------------------------------------------------------------
+NCDrill File Report For: Piezo14A.CMPcbDoc   29/04/2019  18:47:29
+---------------------------------------------------------------------------
+
+Layer Pair : Top Layer to Bottom Layer
+ASCII RoundHoles File : Piezo14A.TXT
+
+Tool         Hole Size           Hole Type     Hole Count Plated       Tool Travel
+---------------------------------------------------------------------------
+T1        20mil (0.508mm)          Round          8                2.18 Inch (55.39 mm)
+T2        28mil (0.7112mm)         Round          4                2.70 Inch (68.60 mm)
+T3        40mil (1.016mm)          Round          10               2.71 Inch (68.94 mm)
+T4        42mil (1.0668mm)         Round          7                0.60 Inch (15.24 mm)
+---------------------------------------------------------------------------
+Totals                                            29               8.20 Inch (208.16 mm)
+
+Total Processing Time (hh:mm:ss) : 00:00:01
