@@ -1,5 +1,9 @@
 Index of contents with descriptions.
-Assembler file for the Contact nozzle contact detection software.
-Gerber and NC files for the Piezo14 PCB on which the software runs.
-Configuration.H and Pins.H for the Ardunio ATMega board controlling the Piezo14 as a daughterboard.
-Data taken from the data memory of the Piezo14 in various nozzle contact events. 
+
+README.md          Program description
+LICENSE            MIT License
+index              This file
+Contact_V0         Assembler file for the Contact nozzle contact detection software.
+Hardware           Gerber and NC files for the Piezo14 PCB on which the software runs.
+Repetier           Configuration.H and Pins.H for the Ardunio ATMega board controlling the Piezo14 as a daughterboard.
+Data               Data taken from the data memory of the Piezo14 in various nozzle contact events. 
