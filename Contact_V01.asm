@@ -644,6 +644,7 @@ BEq10	btfsc	STATUS,C
 	bcf	LATC,RC1	; Turn on green LED
 	bsf	LATA,RA2	; Contact seen
 	bsf	LATA,RA5	; and contact is good. send signal to host
+g32
 	goto	Cycle		; continue looking
 
 ; Now that the ADC has been read it can be restarted so that it is ready
