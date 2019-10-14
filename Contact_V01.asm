@@ -262,6 +262,19 @@ ClrArray	clrf	INDF0
 	movlw	CycTim
 	movwf	PR2		; Period register
 	bsf	T2CON,TMR2ON	; Start Timer2
+
+; Timer 1 is used for the pulse to the host controller
+;	T1CON bits 7,6 = 01 clocked at  Fosc (16Mhz)
+;	rollover in 4.26ms
+	
+	banksel	T1CON
+	movlw	b'01000000'	; source = osc
+	movwf	T1CON
+	clrf	T1GCON
+	clrf	TMR1H
+	clrf	TMR1L
+	bcf	PIR1,TMR1IF	
+	
 	clrf	DataPtr		; Dataptr was used for clearing arrays
 
 Loop1	movf	DataPtr,W
@@ -499,11 +512,18 @@ IsOK
 	movf	OutTim,F
 	btfsc	STATUS,Z
 	goto	NoTim			; No timer called
+	banksel	PIR1
+	btfss	PIR1,TMR1IF
+	goto	NoPulse
+	bcf	T1CON,TMR1ON
+	bcf	PIR1,TMR1IF
+NoPulse
 	decfsz	OutTim,F
 	goto	Cycle			; continue getting data
 	
 ; Time out for LEDs
 	
+	banksel	LATC
 	bsf	LATC,RC0
 	bsf	LATC,RC1
 	goto	Cycle			; continue looking
@@ -520,12 +540,7 @@ NoTim	movlw	LOW(Backstop)
 	
 ; Turn on amber led, signal host for over trigger and start count down
 
-	movlw	SigTim
-	movwf	OutTim
-	banksel	LATC
-	bcf	LATC,RC0	; Turn on amber LED
-	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
-	goto	Cycle		; continue looking
+	goto	Amber
 
 NoOV	lsrf	BaseTot+1,W
 	movwf	Temp1+1
@@ -638,15 +653,28 @@ BEq10	btfsc	STATUS,C
 
 ; Turn on green led, signal host for contact and good and start timer
 
-	movlw	0xF0
-	movwf	OutTim
+Green
 	banksel	LATC
 	bcf	LATC,RC1	; Turn on green LED
 	bsf	LATA,RA2	; Contact seen
 	bsf	LATA,RA5	; and contact is good. send signal to host
-g32
+	goto	GoTmrs	; continue looking
+	
+Amber
+	banksel	LATC
+	bcf	LATC,RC0	; Turn on amber LED
+	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
 	goto	Cycle		; continue looking
 
+GoTmrs
+	banksel	T2CON
+	bsf	T2CON,TMR2ON	; Start timer2
+	movlw	SigTim
+	movwf	OutTim
+	clrf	TMR1L
+	clrf	TMR1H
+	bsf	T1CON,TMR1ON
+	
 ; Now that the ADC has been read it can be restarted so that it is ready
 ; by the next read
 
