@@ -506,9 +506,6 @@ IsPos	movf	DataPtr,W
 ; must be collected but the tests are not useful so are bypassed
 
 IsOK
-	banksel	LATA			; both LATs
-	bcf	LATA,RA2
-	bcf	LATA,RA5	
 	movf	OutTim,F
 	btfsc	STATUS,Z
 	goto	NoTim			; No timer called
@@ -517,6 +514,9 @@ IsOK
 	goto	NoPulse
 	bcf	T1CON,TMR1ON
 	bcf	PIR1,TMR1IF
+	banksel	LATA
+	bcf	LATA,RA2
+	bcf	LATA,RA5
 NoPulse
 	decfsz	OutTim,F
 	goto	Cycle			; continue getting data
@@ -664,8 +664,6 @@ Amber
 	banksel	LATC
 	bcf	LATC,RC0	; Turn on amber LED
 	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
-	goto	Cycle		; continue looking
-
 GoTmrs
 	banksel	T2CON
 	bsf	T2CON,TMR2ON	; Start timer2
