@@ -1,4 +1,5 @@
-;;Version history
+
+	;;Version history
 ; V01 
 ; Contact is a rebuild of Piezo14 following from the earlier Piezo14 software.
 ; In the earliest tests the primary objectives were met but there was 
@@ -629,8 +630,6 @@ HEq10	btfsc	STATUS,C
 	btfsc	STATUS,Z
 	goto	Cycle
 	
-	
-	
 ;	movlw	HIGH(HiBSlope)
 ;	subwf	BSlope+1,W
 ;	btfss	STATUS,Z
@@ -658,14 +657,13 @@ Green
 	bcf	LATC,RC1	; Turn on green LED
 	bsf	LATA,RA2	; Contact seen
 	bsf	LATA,RA5	; and contact is good. send signal to host
+	movlw	1	; for debugging. which LED
 	goto	GoTmrs	; continue looking
-	
 Amber
 	banksel	LATC
 	bcf	LATC,RC0	; Turn on amber LED
 	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
-	goto	Cycle		; continue looking
-
+	movlw	2	; for debugging. which LED
 GoTmrs
 	banksel	T2CON
 	bsf	T2CON,TMR2ON	; Start timer2
