@@ -85,11 +85,11 @@ HiBL	EQU	0x4100		; 16640
 	
 
 ; Backstop	EQU	0x10E0		; 540 above gnd
-Backstop	  EQU	0x1200
+Backstop	  EQU	0x1000
 ; Trig8Lo	EQU	0x0040		; 32 above baseline
-Trig8Lo	  EQU	0x0080
+Trig8Lo	  EQU	0x0040
 ; Trig8Hi	EQU	0x00A0		; 128
-Trig8Hi EQU	0x0120
+Trig8Hi EQU	0x0800
 LoTSlope	EQU	0x0040
 HiTSlope	EQU	0x00A0
 LoBSlope	EQU	0xFFF0		; minus 16
