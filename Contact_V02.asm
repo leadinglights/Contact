@@ -1,4 +1,3 @@
-
 	;;Version history
 ; V01 
 ; Contact is a rebuild of Piezo14 following from the earlier Piezo14 software.
@@ -663,10 +662,7 @@ Amber
 	banksel	LATC
 	bcf	LATC,RC0	; Turn on amber LED
 	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
-<<<<<<< HEAD:Contact_V02.asm
 	movlw	2	; for debugging. which LED
-=======
->>>>>>> c37f945a82c0cf73830e0db154820fbdab83a807:Contact_V01.asm
 GoTmrs
 	banksel	T2CON
 	bsf	T2CON,TMR2ON	; Start timer2
