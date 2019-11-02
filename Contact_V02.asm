@@ -71,7 +71,7 @@ CycTim	EQU	0x05		; Time per reading = N * 32us (was 4)
 	; 0x0F gave a little over 500us per sample
 	; 0x0A gave 350us
 	
-SigTim	EQU	0x80		; 128 * CycTim	
+SigTim	EQU	0xE0		; 128 * CycTim	
 ;OV8	EQU	0x1080		; 4016  (8 value total)
 LoBL	EQU	0x3E00		; 15872 (32 value total)
 HiBL	EQU	0x4100		; 16640      
@@ -85,17 +85,17 @@ HiBL	EQU	0x4100		; 16640
 	
 
 ; Backstop	EQU	0x10E0		; 540 above gnd
-Backstop	  EQU	0x1000
-; Trig8Lo	EQU	0x0040		; 32 above baseline
-Trig8Lo	  EQU	0x0040
-; Trig8Hi	EQU	0x00A0		; 128
-Trig8Hi EQU	0x0800
-LoTSlope	EQU	0x0040
-HiTSlope	EQU	0x00A0
-LoBSlope	EQU	0xFFF0		; minus 16
-HiBSlope	EQU	0x0020		; plus 32
-TBend	EQU	0x08		; 
-BBend	EQU	0x0A
+Backstop	  EQU	0x0F0A
+; Trig8Lo	  EQU	0x0040		; 32 above baseline
+Trig8Lo	  EQU	0x0020
+; Trig8Hi	  EQU	0x00A0		; 128
+Trig8Hi	  EQU	0x0100
+LoTSlope	  EQU	0x0040
+HiTSlope	  EQU	0x00A0
+LoBSlope	  EQU	0xFFF0		; minus 16
+HiBSlope	  EQU	0x0020		; plus 32
+TBend	  EQU	0x08		; 
+BBend	  EQU	0x0A
 	
 ; Timer 2 is used to set the rate at which the ADC is read and is 
 ; set by a constant in this implementation but will be an externaly
@@ -665,9 +665,10 @@ Amber
 	movlw	2	; for debugging. which LED
 GoTmrs
 	banksel	T2CON
-	bsf	T2CON,TMR2ON	; Start timer2
+g32
 	movlw	SigTim
 	movwf	OutTim
+	bsf	T2CON,TMR2ON	; Start timer2
 	clrf	TMR1L
 	clrf	TMR1H
 	bsf	T1CON,TMR1ON
