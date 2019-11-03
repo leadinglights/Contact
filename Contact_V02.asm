@@ -1,5 +1,5 @@
 	;;Version history
-; V01 
+; V03 Changes MCU to PIC16F1704 for larger data storage
 ; Contact is a rebuild of Piezo14 following from the earlier Piezo14 software.
 ; In the earliest tests the primary objectives were met but there was 
 ; unanticipated sensitivity to mechanical noise transmitted through the frame
@@ -7,11 +7,11 @@
 
 ; Assembly source line config statements
 
- #include "p16f1703.inc"
+ #include "p16f1704.inc"
 ;  ### much wierdness on debug  #####
 ; CONFIG1
 ; __config 0x3FE4
- __CONFIG _CONFIG1, _FOSC_INTOSC & _WDTE_OFF & _PWRTE_OFF & _MCLRE_ON & _CP_OFF & _BOREN_ON & _CLKOUTEN_OFF
+ __CONFIG _CONFIG1, _FOSC_INTOSC & _WDTE_ON & _PWRTE_OFF & _MCLRE_ON & _CP_OFF & _BOREN_ON & _CLKOUTEN_OFF
 ; CONFIG2
 ; __config 0x3FFF
  __CONFIG _CONFIG2, _WRT_OFF & _PPS1WAY_ON & _ZCDDIS_ON & _PLLEN_ON & _STVREN_ON & _BORV_LO & _LPBOR_OFF & _LVP_ON
@@ -30,11 +30,15 @@
 ; this is used to calculate the values to check against slope and curve
 ; windows
 
-Array1	UDATA	0x20
-	RES	0x40
-Array2	UDATA	0xA0
-	RES	0x40
-
+Array0	UDATA	0x020
+	RES	0x50
+Array1	UDATA	0x0A0
+	RES	0x50
+Array2	UDATA	0x120
+	RES	0x50
+Array3	UDATA	0x1A0
+	RES	0x50
+	
 ; Other parts of linear memory on PIC16F1704 are not used
 	
 ; Variables
@@ -51,19 +55,25 @@ BSlope	RES	2
 BCurve	RES	2	
 
 RES_VECT  CODE	0x0000	; processor reset vector
+  
+	GOTO    START	; go to beginning of program
+  
+INT_VECT	CODE	0x0004		; Context saving active on 1704
+	bcf	INTCON,TMR0IF	; only active interrupt
+	decfsz	OutTim	
+	retfie
+	bcf	INTCON,TMR0IE
+	retfie
+	
 
 	GOTO    START                   ; go to beginning of program
-	
-T0Run	EQU	0	; bit 0 of flags shows timer running
-
-; TODO ADD INTERRUPTS HERE IF USED
-; Need some interrupt service for I2C
 	
 ; Test constants for getting trigger values
 
 	; CycTim is Timer2 used for ADC rate,
-	; SigTim is number of ADC cycles for which the output
-	; signal and LEDs will be held.
+	; SigTim is number Timer0 cycles following a contact event 
+	; detection for which no further contact will be sought and
+	; for which the LED will be held on.
 
 CycTim	EQU	0x05		; Time per reading = N * 32us (was 4)
 	
@@ -71,8 +81,7 @@ CycTim	EQU	0x05		; Time per reading = N * 32us (was 4)
 	; 0x0F gave a little over 500us per sample
 	; 0x0A gave 350us
 	
-SigTim	EQU	0xE0		; 128 * CycTim	
-;OV8	EQU	0x1080		; 4016  (8 value total)
+SigTim	EQU	0x62		; 400us for LEDs etc.	
 LoBL	EQU	0x3E00		; 15872 (32 value total)
 HiBL	EQU	0x4100		; 16640      
 
@@ -83,12 +92,8 @@ HiBL	EQU	0x4100		; 16640
 	
 ; New values to get around excess sensitivity
 	
-
-; Backstop	EQU	0x10E0		; 540 above gnd
-Backstop	  EQU	0x0F0A
-; Trig8Lo	  EQU	0x0040		; 32 above baseline
-Trig8Lo	  EQU	0x0020
-; Trig8Hi	  EQU	0x00A0		; 128
+Backstop	  EQU	0x1000
+Trig8Lo	  EQU	0x0040
 Trig8Hi	  EQU	0x0100
 LoTSlope	  EQU	0x0040
 HiTSlope	  EQU	0x00A0
@@ -109,8 +114,23 @@ START
 	movlw	0x78	; Set internal oscillator at 16MHz  
 	movwf	OSCCON
 	banksel	OPTION_REG
-	movlw	b'10000111'
+	
+	; OPTION_REG
+;  bit 7      0	Not used here
+;  bit 6      0	Not used here
+;  bit 5      0	Timer0 source is Fosc/4
+;  bit 4      0	Not used here
+;  bit 3      0	Prescaler to Timer0
+; bits 2-1  101	prescaler is 1:64 (4.096ms per tick)
+	
+	movlw	b'10000101'
 	movwf	OPTION_REG
+	
+	clrf	INTCON		; is a core register
+	bsf	INTCON,GIE
+	banksel	WDTCON
+	movlw	b'00010100'	
+	movwf	WDTCON; 1 second
 
 ; Initialisation of working memory - clear shared memory
 	
@@ -254,30 +274,15 @@ ClrArray	clrf	INDF0
 	; bits 1-0 = 01	 ; 4 was Prescaler is 64
 
 	banksel	T2CON
-;	movlw	b'00001011'	; 520uS T2CON='00001011' CycTim = 0x1E
-;	movwf	T2CON
-
 	movlw	b'00001011'	; postscaler = 10
 	movwf	T2CON
 	movlw	CycTim
 	movwf	PR2		; Period register
 	bsf	T2CON,TMR2ON	; Start Timer2
-
-; Timer 1 is used for the pulse to the host controller
-;	T1CON bits 7,6 = 01 clocked at  Fosc (16Mhz)
-;	rollover in 4.26ms
-	
-	banksel	T1CON
-	movlw	b'01000000'	; source = osc
-	movwf	T1CON
-	clrf	T1GCON
-	clrf	TMR1H
-	clrf	TMR1L
-	bcf	PIR1,TMR1IF	
 	
 	clrf	DataPtr		; Dataptr was used for clearing arrays
-
-Loop1	movf	DataPtr,W
+Loop1
+	movf	DataPtr,W
 	movwf	FSR0L
 		
 	; Look for Timer2 to set the flag
@@ -506,27 +511,17 @@ IsPos	movf	DataPtr,W
 ; must be collected but the tests are not useful so are bypassed
 
 IsOK
-	movf	OutTim,F
-	btfsc	STATUS,Z
-	goto	NoTim			; No timer called
-	banksel	PIR1
-	btfss	PIR1,TMR1IF
-	goto	NoPulse
-	bcf	T1CON,TMR1ON
-	bcf	PIR1,TMR1IF
+	btfsc	INTCON,TMR0IE	; If flag set then hold LED on 
+	goto	Cycle		; just continue getting data
 	banksel	LATA
+	btfss	LATA,RA2		; if high then LED is on
+	goto	NoTim		; otherwise just continue 
 	bcf	LATA,RA2
 	bcf	LATA,RA5
-NoPulse
-	decfsz	OutTim,F
-	goto	Cycle			; continue getting data
-	
-; Time out for LEDs
-	
-	banksel	LATC
-	bsf	LATC,RC0
+	bsf	LATC,RC0		; turn off LEDs
 	bsf	LATC,RC1
-	goto	Cycle			; continue looking
+	goto	Cycle		; and get more
+;
 
 ; Check for the higher trigger does not need to be relative to
 ; baseline so can be simple compare
@@ -664,14 +659,12 @@ Amber
 	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
 	movlw	2	; for debugging. which LED
 GoTmrs
-	banksel	T2CON
-g32
+	; Start Timer0
 	movlw	SigTim
 	movwf	OutTim
-	bsf	T2CON,TMR2ON	; Start timer2
-	clrf	TMR1L
-	clrf	TMR1H
-	bsf	T1CON,TMR1ON
+	banksel	TMR0
+	clrf	TMR
+	bsf	INTCON,TMR0IE
 	
 ; Now that the ADC has been read it can be restarted so that it is ready
 ; by the next read
