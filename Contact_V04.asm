@@ -1,4 +1,8 @@
 	;;Version history
+; V04 replaces V03 as the baseline mAD calculations were unrecoverably screwed
+; In this version the oldesr 112 readings are used to establish a true running
+; average to get a redictable baseline. The same values are used to get a good
+; Mean Average Deviation.
 ; V03 Changes MCU to PIC16F1704 for larger data storage
 ; Contact is a rebuild of Piezo14 following from the earlier Piezo14 software.
 ; In the earliest tests the primary objectives were met but there was 
@@ -7,18 +11,17 @@
 
 ; Assembly source line config statements
 
- #include "p16f1704.inc"
-;  ### much wierdness on debug  #####
+ #include "p16f1704.inc";  ### much wierdness on debug  #####
 ; CONFIG1
 ; __config 0x3FE4
- __CONFIG _CONFIG1, _FOSC_INTOSC & _WDTE_ON & _PWRTE_OFF & _MCLRE_ON & _CP_OFF & _BOREN_ON & _CLKOUTEN_OFF
+ __CONFIG _CONFIG1, _FOSC_INTOSC & _WDTE_OFF & _PWRTE_OFF & _MCLRE_ON & _CP_OFF & _BOREN_ON & _CLKOUTEN_OFF
 ; CONFIG2
 ; __config 0x3FFF
  __CONFIG _CONFIG2, _WRT_OFF & _PPS1WAY_ON & _ZCDDIS_ON & _PLLEN_ON & _STVREN_ON & _BORV_LO & _LPBOR_OFF & _LVP_ON
 
 	Errorlevel 	0,-302
 	Errorlevel 	0,-303	
- 
+ ; !!!!!!!!!!!!! WDT switched off for simulation !!!!!!!!!!!!
 ; Two arrays are maintained, a circular array of 32 values of which the
 ; newest 8 form the trigger total (TrigTot) and the other 24 are a region
 ; which creates a delay before the oldest value is added onto the total
@@ -47,24 +50,23 @@ Array3	UDATA	0x1A0
 OutTim	RES	1	; Number of read cycles for valid signal
 DataPtr	RES	1	; Uncorrected pointer to ADC buffer
 Temp1	RES	2	; Temporary stores
-BaseTot	RES	2	; Total for running average
+BaseTot	RES	3	; Total for running average
+BaseLin	RES	2	; Baseline at X8 scale
 TrigTot	RES	2	; Total for limit trigger
-TSlope	RES	2	; Slope near trigger point
-TCurve	RES	2	; Diference from non linear
-BSlope	RES	2	
-BCurve	RES	2	
-
+TFirst	RES	2	; First value above T1
+BaseMAD	RES	2	; baseline Mean Absolute Deviation
+TCount	RES	1	; number of cycles between T1 and T2
+	
 RES_VECT  CODE	0x0000	; processor reset vector
   
 	GOTO    START	; go to beginning of program
   
 INT_VECT	CODE	0x0004		; Context saving active on 1704
 	bcf	INTCON,TMR0IF	; only active interrupt
-	decfsz	OutTim	
+	decfsz	OutTim,F	
 	retfie
 	bcf	INTCON,TMR0IE
 	retfie
-	
 
 	GOTO    START                   ; go to beginning of program
 	
@@ -92,15 +94,12 @@ HiBL	EQU	0x4100		; 16640
 	
 ; New values to get around excess sensitivity
 	
-Backstop	  EQU	0x1000
-Trig8Lo	  EQU	0x0040
-Trig8Hi	  EQU	0x0100
-LoTSlope	  EQU	0x0040
-HiTSlope	  EQU	0x00A0
-LoBSlope	  EQU	0xFFF0		; minus 16
-HiBSlope	  EQU	0x0020		; plus 32
-TBend	  EQU	0x08		; 
-BBend	  EQU	0x0A
+Backstop	EQU	0x1000
+T1	EQU	0x0060		; !!!!TBD
+T2	EQU	0x0120		;!!!TBD
+Bend	EQU	0x0040		;!!!!TBD
+LoMAD	EQU	0xFFF0		; !!!!TBD
+MaxT	EQU	0x20		; !!! TBD !!!!
 	
 ; Timer 2 is used to set the rate at which the ADC is read and is 
 ; set by a constant in this implementation but will be an externaly
@@ -140,28 +139,32 @@ START
 	clrf	Temp1+1
 	clrf	BaseTot
 	clrf	BaseTot+1
+	clrf	BaseTot+2
 	clrf	TrigTot
 	clrf	TrigTot+1
-	clrf	TSlope
-	clrf	TSlope+1
-	clrf	TCurve
-	clrf	TCurve+1
-	clrf	BSlope
-	clrf	BSlope+1
-	clrf	BCurve
-	clrf	BCurve+1
+	clrf	BaseLin
+	clrf	BaseLin+1
+	clrf	BaseMAD
+	clrf	BaseMAD+1
+;	clrf	BCurve
+;	clrf	BCurve+1
 
 ; Clear the linear memory
 
+	clrf	FSR0L
 	movlw	0x20
 	movwf	FSR0H
-	movwf	FSR1H
-	movlw	0x80		; 160 bytes
-	movwf	DataPtr
-ClrArray	clrf	INDF0
-	incf	FSR0,F
-	decfsz	DataPtr,F
-	goto	ClrArray
+Clr1	clrf	INDF0
+	decfsz	FSR0L,F
+	goto	Clr1
+	movlw	0x3F
+	movwf	FSR0L
+	movlw	0x21
+	movwf	FSR0H
+Clr2	clrf	INDF0
+	decf	FSR0L,F
+	btfss	FSR0L,7		; skip when below 0
+	goto	Clr2
 	
 ; Port Initialisation
 	
@@ -250,13 +253,13 @@ ClrArray	clrf	INDF0
  
 	; ADCON1   = 10100011
 	; bit    7 = 1 Right justified
-	; bits 6-4 = 010 Fosc/64
+	; bits 6-4 = 010 Fosc/32
 	; bit    3 = 0 unimplemented
 	; bit    2 = 0 Vref- connected to Vss
 	; bits 1,0 = 11 Vref+ connected to FVR_Buffer   
     
 	banksel	ADCON1
-	movlw	b'10110000'
+	movlw	b'10100000'
 	movwf	ADCON1
 	movlw	b'00001101'
 	movwf	ADCON0
@@ -280,9 +283,14 @@ ClrArray	clrf	INDF0
 	movwf	PR2		; Period register
 	bsf	T2CON,TMR2ON	; Start Timer2
 	
+	movlw	0x21
+	movwf	FSR0H
+	movlw	0x20
+	movwf	FSR1H
 	clrf	DataPtr		; Dataptr was used for clearing arrays
 Loop1
 	movf	DataPtr,W
+	andlw	b'00111111'	; 32 values (64 bytes)	
 	movwf	FSR0L
 		
 	; Look for Timer2 to set the flag
@@ -290,6 +298,7 @@ Loop1
 	banksel	PIR1
 	btfss	PIR1,TMR2IF
 	goto	$-1
+
 	bcf	PIR1,TMR2IF
 	
 ; Start the ADC conversion
@@ -298,36 +307,102 @@ Loop1
 	btfsc	ADCON0,ADGO
 	goto	$-1	 ; Wait for ADC to be ready
 	
-; Subtract 1/64th of the baseline total from the baseline total. Division by
-; 64 is easiest done by multiply by 8 then lose the MS byte
-	
+; *********112 values
+
+; In order to avoid the ADC values leading up to the trigger signal
+; affecting the baseline calculations we look only at 112 of the 128
+; values in the array. To scale BaseTot to the baseline we must 
+; divide the BaseTot by 128 (multiply by 2 then drop the LS byte),
+; further dividing the result by 8 then adding it on to the result
+; of the first division.
+
+
+	lslf	BaseTot,W		; just get C bit
+	rlf	BaseTot+1,W		; into new LS byte
+	movwf	BaseLin
+	rlf	BaseTot+2,W
+	movwf	BaseLin+1
 	clrf	Temp1+1
-	movf	BaseTot+1,W
+	swapf	BaseLin,W
+	andlw	b'00001111'
 	movwf	Temp1
-	rlf	BaseTot,W		; get MS bit of LS byte of BaseTot
-	rlf	Temp1,F		; which now in LS bit of Temp1
-	rlf	BaseTot+1,W	; get MS bit of MS byte of BaseTot
-	rlf	Temp1+1,F		; which put in LS bit of Temp1+1
-	btfsc	BaseTot,6
-	bsf	STATUS,C
-	rlf	Temp1,F
+	swapf	BaseLin+1,W
+	andlw	b'11110000'
+	iorwf	Temp1,F
+	lslf	Temp1,F
 	rlf	Temp1+1,F
-	
-; and subtract
-	
+	btfss	BaseLin,3
+	bsf	Temp1,0
 	movf	Temp1,W
-	subwf	BaseTot,F
+	addwf	BaseLin,F
 	movf	Temp1+1,W
-	subwfb	BaseTot+1,F
-		
-; Add element pointed at in the array (oldest value) to the baseline total.
-	
+	addwfc	BaseLin+1,F		 ;Whew!!
+
 	movf	DataPtr,W
-	movwf	FSR0L
-	moviw	0[FSR0]
+	addlw	0xE0		; Actually points back 16 elements	
+	movwf	FSR1L
+	moviw	0[FSR1]
+	movwf	Temp1		; copy for MAD addition
 	addwf	BaseTot,F
-	moviw	1[FSR0]
+	moviw	1[FSR1]
+	movwf	Temp1+1
 	addwfc	BaseTot+1,F
+	movlw	0
+	addwfc	BaseTot+2,F
+
+; use Temp1 to get absolute differences from BaseLin
+
+	movf	BaseLin,W
+	subwf	Temp1,F
+	movf	BaseLin+1,W
+	subwfb	Temp1+1,F
+	btfss	Temp1+1,7
+	goto	AddMAD
+	comf	Temp1,F
+	comf	Temp1+1,F
+	incfsz	Temp1,F
+	incf	Temp1+1,F
+
+; Add the element difference to the baseline MAD total
+
+AddMAD
+	movf	Temp1,W
+	addwf	BaseMAD,F
+	movf	Temp1+1,W
+	addwf	BaseMAD,F
+
+; now subtract the oldest value in the 128 element array - this is the
+; value which will be replaced by the next TrigTot
+
+	movf	DataPtr,W	; point to oldest (newest replaces)
+	movwf	FSR1L
+	moviw	0[FSR1]
+	movwf	Temp1		; copy for MAD subtraction
+	subwf	BaseTot,F
+	moviw	1[FSR1]
+	movwf	Temp1+1
+	subwfb	BaseTot+1,F
+	movlw	0
+	subwfb	BaseTot+2,F
+
+	movf	BaseLin,W
+	subwf	Temp1,F
+	movf	BaseLin+1,W
+	subwfb	Temp1+1,F
+	btfss	Temp1+1,7
+	goto	SubMAD
+	comf	Temp1,F
+	comf	Temp1+1,F
+	incfsz	Temp1,F
+	incf	Temp1+1,F
+
+; Subtract the element difference from the baseline MAD total
+
+SubMAD
+	movf	Temp1,W
+	subwf	BaseMAD,F
+	movf	Temp1+1,W
+	subwfb	BaseMAD,F	
 
 ; Get the data from the ADC and put it in the array. Add this value to 
 ; the trigger total (TrigTot) at the same time
@@ -338,7 +413,7 @@ Loop1
 	movf	ADRESH,W
 	movwi	1[FSR0]
 	addwfc	TrigTot+1,F
-	
+		
 ; As the current value  from the ADC is no longer needed it is a good time
 ; to restart the ADC for the next conversion.
 
@@ -347,7 +422,7 @@ Loop1
 		
 ; Point to the data N (8?) back and subtract it from the trigger total
 	
-	movf	DataPtr,W
+	movf	FSR0L,W
 	addlw	0x30		; points 8 back
 	movwf	FSR0L
 	bcf	FSR0L,6
@@ -356,293 +431,145 @@ Loop1
 	moviw	1[FSR0]
 	subwfb	TrigTot+1,F
 			
-; Get the base address for the smoothed trigger values and put it into
-; FSR1L, using this to copy the TrigTot value into the array in Bank1
-	
-	movf	DataPtr,W
-	addlw	0x40		; shouldn't need ms bit zeroing
-	movwf	FSR1L
+; FSR1L will still hold the value for the oldest element which will now
+; be replaced by the value in trigTot.
+
 	movf	TrigTot,W
 	movwi	0[FSR1]		; in TrigTot array
-	movwf	TSlope		; and also in TSlope
-	movwf	TCurve		; and TCurve
 	movf	TrigTot+1,W
 	movwi	1[FSR1]
-	movwf	TSlope+1		; for ms bytes
-	movwf	TCurve+1
 
-; The trigger slope is calculated from the latest element and the element 
-; 6 back. for convenience this is calculated from the element 26 forward.
-; The trigger curve is calculated from the sum of the latest element and
-; the one 6 back less twice the element 3 back, or 29 forward.
+; All essential data has been stored so see if either good or bad
+; contacts have occured - or if to keep looking
 	
-	movf	DataPtr,W
-	addlw	0x74		; 64 + 52 for element N-6
-	movwf	FSR1L
-	movlw	0x40
-	btfsc	FSR1L,7		; Superkludge
-	subwf	FSR1L,F
-	moviw	0[FSR1]
-	subwf	TSlope,F
-	moviw	1[FSR1]
-	subwfb	TSlope+1,F
-	
-; Sum for part of TCurve	
-	
-	moviw	0[FSR1]
-	addwf	TCurve,F
-	moviw	1[FSR1]
-	addwfc	TCurve+1,F
-	
-; now subtract 2 * mid point (subtract two times)
-
-	movf	DataPtr,W
-	addlw	0x7A		; 64 + 58 for element N-3
-	movwf	FSR1L
-	movlw	0x40
-	btfsc	FSR1L,7		; Superkludge
-	subwf	FSR1L,F
-	moviw	0[FSR1]
-	subwf	TCurve,F
-	moviw	1[FSR1]
-	subwfb	TCurve+1,F
-	moviw	0[FSR1]		; and again 
-	subwf	TCurve,F
-	moviw	1[FSR1]
-	subwfb	TCurve+1,F
-	
-; If result is negative then make it positive
-	
-	btfss	TCurve+1,7
-	goto	IsPos
-	comf	TCurve,F
-	comf	TCurve+1,F
-	incfsz	TCurve,F
-	goto	IsPos
-	incf	TCurve+1,F
-
-; The values for the BSlope and BCurve are at N-18, N-21 and N-2
-; Note that BSlope will be negative as often as positive
-	
-IsPos	movf	DataPtr,W
-	addlw	0x60		; Element N-16
-	movwf	FSR1L
-	movlw	0x40
-	btfsc	FSR1L,7		; Superkludge
-	subwf	FSR1L,F
-	moviw	0[FSR1]
-	movwf	BSlope
-	movwf	BCurve
-	moviw	1[FSR1]
-	movwf	BSlope+1
-	movwf	BCurve+1
-	
-	movf	DataPtr,W
-	addlw	0x6C		; Element N-22
-	movwf	FSR1L
-	movlw	0x40
-	btfsc	FSR1L,7		; Superkludge
-	subwf	FSR1L,F
-	moviw	0[FSR1]
-	subwf	BSlope,F
-	moviw	1[FSR1]
-	subwfb	BSlope+1,F	
-	
-	moviw	0[FSR1]
-	addwf	BCurve,F
-	moviw	1[FSR1]
-	addwf	BCurve+1,F
-
-	movf	DataPtr,W
-	addlw	0x66		; Element N-19
-	movwf	FSR1L
-	movlw	0x40
-	btfsc	FSR1L,7		; Superkludge
-	subwf	FSR1L,F
-	moviw	0[FSR1]
-	subwf	BCurve,F
-	moviw	1[FSR1]
-	subwfb	BCurve+1,F
-	moviw	0[FSR1]		; and again 
-	subwf	BCurve,F
-	moviw	1[FSR1]
-	subwfb	BCurve+1,F	
-	
-; If result is negative then make it positive
-	
-	btfss	BCurve+1,7
-	goto	IsOK
-	comf	BCurve,F
-	comf	BCurve+1,F
-	incfsz	BCurve,F
-	goto	IsOK
-	incf	BCurve+1,F
-	
-; At this point the following should have been calculated:
-;	The total of the last 8 points - used for the trigger point(s)
-;	A 32 element array of the latest trigger point totals
-;	A baseline total of the previous 64 ADC readings
-;	The slope between the most recent and an earlier trigger values
-;	The curve between the most recent trigger value, the earlier
-;	trigger value and a value at a midpoint
-;	The slope between two values 16 back in the trigger array
-;	The curve between these values
-; 
-; Tests
-; If time since last signal < time limit then exit
-; If TrigTot > Over triger limit then
-;	Start timer
-; 	Set over limit signal on
-;	Turn amber LED on
-;	exit
-; Turn off signals, LEDS and timer
-;	
-; If BaseTot < low baseline limit or BaseTot > high baseline limit then exit
-; If TrigTot < low trigger limit then exit
-; If Slope < lower slope limit or Slope > upper slope limit then exit
-; If TCurve > curve limit then exit 
-; Else	
-; 	Start timer
-;	Turn on trigger signal
-;	Turn on green LED.
-;
-; If the count is zero then the delay has not been called and the tests must
-; be called. If the count is non-zero then the data input and calculations
-; must be collected but the tests are not useful so are bypassed
-
-IsOK
 	btfsc	INTCON,TMR0IE	; If flag set then hold LED on 
 	goto	Cycle		; just continue getting data
 	banksel	LATA
 	btfss	LATA,RA2		; if high then LED is on
-	goto	NoTim		; otherwise just continue 
+	goto	TooHigh		; otherwise just continue 
 	bcf	LATA,RA2
 	bcf	LATA,RA5
 	bsf	LATC,RC0		; turn off LEDs
 	bsf	LATC,RC1
 	goto	Cycle		; and get more
-;
+	
+; Before seeking for good contacts it is neccessary to check failed 
+; contacts - where the BackStop value is exceeded
 
-; Check for the higher trigger does not need to be relative to
-; baseline so can be simple compare
-
-NoTim	movlw	LOW(Backstop)
+TooHigh
+	movlw	LOW(Backstop)
 	subwf	TrigTot,W
 	movlw	HIGH(Backstop)
 	subwfb	TrigTot+1,W	
-	btfss	STATUS,C
-	goto	NoOV		; below backstop trigger point
+	btfsc	STATUS,C
+	goto	Amber		; Above BackStop limit
+
+; The main seek routine when there is not blanking time (during LED)
+; The value needed is present value of TrigTot above BaseLine and will
+; be in Temp1
 	
-; Turn on amber led, signal host for over trigger and start count down
-
-	goto	Amber
-
-NoOV	lsrf	BaseTot+1,W
-	movwf	Temp1+1
-	rrf	BaseTot,W
-	movwf	Temp1
-	lsrf	Temp1+1,F
-	rrf	Temp1,F
-	lsrf	Temp1+1,F
-	rrf	Temp1,F		
-	
-; Temp1 now contains BaseTot divided by 8 so subtract from TrigTot to give 
-; present TrigTot above baseline
-
-	movf	Temp1,W
+MainSeek
+	movf	BaseLin,W
 	subwf	TrigTot,W
 	movwf	Temp1
-	movf	Temp1+1,W
+	movf	BaseLin+1,W
 	subwfb	TrigTot+1,W
 	movwf	Temp1+1
 
-; Difference in Temp1 so now compare with the lower trigger value
+; If T1 has already been passed then look for T2
 	
-	movlw	LOW(Trig8Lo)
-	subwf	Temp1,W
-	movlw	High(Trig8Lo)
-	subwfb	Temp1+1,W	
-HEq6	andlw	b'10000000'
-	btfss	STATUS,Z
-	goto	Cycle		; Tot 8 below lower trigger point
-
-; TrigTot is above Trig8Lo so possible good trigger but has it reached
-; high value relative to baseline without a good trigger being found?
-
-	movlw	HIGH(LoTSlope)
-	subwf	TSlope+1,W
-	btfss	STATUS,Z
-	goto	HEq8
-	movlw	LOW(LoTSlope)
-	subwf	TSlope,W	
-HEq8	btfss	STATUS,C
-	goto	Cycle		; Slope is below low slope
-
-; Check if slope is below high slope
-
-	movlw	HIGH(HiTSlope)
-	subwf	TSlope+1,W
-	btfss	STATUS,Z
-	goto	HEq9
-	movlw	LOW(HiTSlope)
-	subwf	TSlope,W	
-HEq9	btfsc	STATUS,C
-	goto	Cycle		; Slope is above high slope
-
-; Check if curve within limits
-
-	movlw	HIGH(TBend)
-	subwf	TCurve+1,W
-	btfss	STATUS,Z
-	goto	HEq10
-	movlw	LOW(TBend)
-	subwf	TCurve,W
-HEq10	btfsc	STATUS,C
-	goto	Cycle		; Upstroke not linear
-
-; Check if pre upstroke baseline segment slope is above low slope
- 
-	movlw	LOW(LoBSlope)
-	subwf	BSlope,W		; only want carry
-	movwf	Temp1
-	movlw	HIGH(LoBSlope)
-	subwfb	BSlope+1,W
-	movwf	Temp1+1
-	andlw	b'10000000'	; check for ms bit 
-	btfss	STATUS,Z
-	goto	Cycle	
-	
-; Check if pre upstroke baseline segment slope is below high slope
-
-	movlw	LOW(HiBSlope)
-	subwf	BSlope,W		; only want carry
-	movwf	Temp1
-	movlw	HIGH(HiBSlope)
-	subwfb	BSlope+1,W
-	movwf	Temp1+1
-	andlw	b'10000000'	; check for ms bit 
+	movf	TCount,F
 	btfsc	STATUS,Z
+	goto	SeekT1
+	
+; TCount is non zero so T1 has been found, Increment it and check if ramp
+; is too low then reset and keep looking for a new T1
+	
+	incf	TCount,F
+	movlw	MaxT
+	subwf	TCount,W
+	btfss	STATUS,Z
+	goto	SeekT2
+	clrf	TCount
+	goto	Cycle
+SeekT2
+	movlw	LOW(T2)
+	subwf	Temp1,W
+	movlw	HIGH(T2)
+	subwfb	Temp1+1,W
+	andlw	b'10000000'
+	btfss	STATUS,Z		; Negative if T2>Temp1
 	goto	Cycle
 	
-;	movlw	HIGH(HiBSlope)
-;	subwf	BSlope+1,W
-;	btfss	STATUS,Z
-;	goto	BEq9
-;	movlw	LOW(HiBSlope)
-;	subwf	BSlope,W	
-;BEq9	btfsc	STATUS,C
-;	goto	Cycle		; Slope is above high slope
+; Three values are now needed, The value when T2 was passed, the value 
+; when T1 was passed and the mid-point value. If the count between is odd
+; then two points are used. To calculate if the mid-point is on a
+; straight line the formula for even counts is E(T1) + E(T2) - 2 * E(TM)
+; for odd counts this becomes E(T1) + E(T2) - E(TM) - E(TM - 1)
 	
-; Check if pre upstroke baseline segment curve is within limits
+	movf	TrigTot,W
+	movwf	Temp1
+	movf	TrigTot+1,W
+	movwf	Temp1+1
+	lslf	TCount,W		; TCount X 2
+	subwf	DataPtr,W
+	movwf	FSR1
+	moviw	0[FSR1]
+	addwf	Temp1,F
+	moviw	1[FSR1]
+	addwfc	Temp1+1,F
+	movf	TCount,W		; By 2 then div2 (-:
+	andlw	b'11111110'	; mask off ls bit (see later)
+	subwf	DataPtr,W
+	movwf	FSR1
+	moviw	0[FSR1]
+	subwf	Temp1,F
+	moviw	1[FSR1]
+	subwfb	Temp1+1,F
+	btfss	TCount,0
+	goto	Evens
+	movlw	2
+	subwf	FSR1,F
+Evens
+	moviw	0[FSR1]
+	subwf	Temp1,F
+	moviw	1[FSR1]
+	subwfb	Temp1+1,F		
 
-	movlw	HIGH(BBend)
-	subwf	BCurve+1,W
-	btfss	STATUS,Z
-	goto	BEq10
-	movlw	LOW(BBend)
-	subwf	BCurve,W
-BEq10	btfsc	STATUS,C
-	goto	Cycle		; Upstroke not linear
+; Check Temp1 for limits of strightness	
+	
+	btfss	Temp1+1,7
+	goto	BendOK
+	comf	Temp1+1,F
+	comf	Temp1,F
+	incfsz	Temp1,F
+	goto	BendOK
+	incf	Temp1+1,F
+BendOK
+
+	movlw	LOW(Bend)
+	subwf	Temp1,F
+	movlw	HIGH(Bend)
+	subwf	Temp1+1,F
+	btfss	Temp1+1,7
+	goto	Green
+	goto	Amber
+	
+	; Look for T1 (first trigger point)
+SeekT1
+	movlw	LOW(T1)
+	subwf	Temp1,W
+	movlw	HIGH(T1)
+	subwfb	Temp1+1,W
+	andlw	b'10000000'
+	btfss	STATUS,Z		; Equal or positive if T1<Temp1
+	goto	Cycle
+	
+; Start the cycle counter between T1 and T2. 
+	
+	movlw	1
+	movwf	TCount
+	goto	Cycle
 
 ; Turn on green led, signal host for contact and good and start timer
 
@@ -659,20 +586,17 @@ Amber
 	bsf	LATA,RA2	; Contact, possibly OV seen so signal host
 	movlw	2	; for debugging. which LED
 GoTmrs
-	; Start Timer0
+	clrf	TCount	; clear for next ramp
+; Start Timer0
 	movlw	SigTim
 	movwf	OutTim
 	banksel	TMR0
-	clrf	TMR
+	clrf	TMR0
 	bsf	INTCON,TMR0IE
 	
-; Now that the ADC has been read it can be restarted so that it is ready
-; by the next read
-
-Cycle	incf	DataPtr,F
+Cycle
 	incf	DataPtr,F
-	btfsc	DataPtr,6
-	clrf	DataPtr
+	incf	DataPtr,F
 	goto	Loop1
 
 	END
