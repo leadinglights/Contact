@@ -98,8 +98,9 @@ Backstop	EQU	0x1000
 T1	EQU	0x0060		; !!!!TBD
 T2	EQU	0x0120		;!!!TBD
 Bend	EQU	0x0040		;!!!!TBD
-LoMAD	EQU	0xFFF0		; !!!!TBD
+LoMAD	EQU	0x0800		; !!!!TBD
 MaxT	EQU	0x20		; !!! TBD !!!!
+SafeMAD	EQU	0x3A98		; !!!TBD
 	
 ; Timer 2 is used to set the rate at which the ADC is read and is 
 ; set by a constant in this implementation but will be an externaly
@@ -309,34 +310,47 @@ Loop1
 	
 ; *********112 values
 
-; In order to avoid the ADC values leading up to the trigger signal
-; affecting the baseline calculations we look only at 112 of the 128
-; values in the array. To scale BaseTot to the baseline we must 
-; divide the BaseTot by 128 (multiply by 2 then drop the LS byte),
-; further dividing the result by 8 then adding it on to the result
-; of the first division.
-
-
-	lslf	BaseTot,W		; just get C bit
-	rlf	BaseTot+1,W		; into new LS byte
+	movf	BaseTot+2,W				
+	movwf	Temp1+1				
+	movwf	Temp1				
+	lsrf	Temp1+1,F				
+	lsrf	Temp1+1,F				
+	lsrf	Temp1+1,W				
+	addwf	Temp1,F				
+							
+	swapf	BaseTot+1,W				
+	andlw	b'00001111'				
+	movwf	Temp1+1				
+	lsrf	Temp1+1,W				
+	addwf	Temp1,F				
+	swapf	BaseTot+2,W				
+	andlw	b'11110000'			
+	movwf	Temp1+1				
+	lsrf	Temp1+1,W				
+	addwf	Temp1,F				
+							
+	lsrf	BaseTot+2,W		; Get C
+	rrf	BaseTot+1,W				
+	movwf	Temp1+1				
+	lsrf	Temp1+1,W				
+	btfsc	BaseTot+2,1				
+	iorlw	b'10000000'				
+	addwf	Temp1,F	
+	
+	lsrf	BaseTot+2,W				
+	movwf	Temp1+1				
+	lsrf	Temp1+1,F
+							
+	lslf	BaseTot,W		; Get ms bit from LS byte
+	rlf	BaseTot+1,W				
 	movwf	BaseLin
 	rlf	BaseTot+2,W
-	movwf	BaseLin+1
-	clrf	Temp1+1
-	swapf	BaseLin,W
-	andlw	b'00001111'
-	movwf	Temp1
-	swapf	BaseLin+1,W
-	andlw	b'11110000'
-	iorwf	Temp1,F
-	lslf	Temp1,F
-	rlf	Temp1+1,F
-	btfss	BaseLin,3
-	bsf	Temp1,0
-	movf	Temp1,W
-	addwf	BaseLin,F
-	movf	Temp1+1,W
-	addwfc	BaseLin+1,F		 ;Whew!!
+	movwf	BaseLin+1			
+							
+	movf	Temp1,W				
+	addwf	BaseLin,F				
+	movf	Temp1+1,W				
+	addwfc	BaseLin+1,F				
 
 	movf	DataPtr,W
 	addlw	0xE0		; Actually points back 16 elements	
@@ -350,7 +364,8 @@ Loop1
 	movlw	0
 	addwfc	BaseTot+2,F
 
-; use Temp1 to get absolute differences from BaseLin
+; Temp1 contains a copy of the 16th oldest element which is compared to the
+; baseline to get the difference between that elelment and the baseline
 
 	movf	BaseLin,W
 	subwf	Temp1,F
@@ -360,7 +375,8 @@ Loop1
 	goto	AddMAD
 	comf	Temp1,F
 	comf	Temp1+1,F
-	incfsz	Temp1,F
+	incf	Temp1,F
+	btfsc	STATUS,Z
 	incf	Temp1+1,F
 
 ; Add the element difference to the baseline MAD total
@@ -369,7 +385,7 @@ AddMAD
 	movf	Temp1,W
 	addwf	BaseMAD,F
 	movf	Temp1+1,W
-	addwf	BaseMAD,F
+	addwfc	BaseMAD+1,F
 
 ; now subtract the oldest value in the 128 element array - this is the
 ; value which will be replaced by the next TrigTot
@@ -385,29 +401,50 @@ AddMAD
 	movlw	0
 	subwfb	BaseTot+2,F
 
-	movf	BaseLin,W
-	subwf	Temp1,F
-	movf	BaseLin+1,W
-	subwfb	Temp1+1,F
-	btfss	Temp1+1,7
-	goto	SubMAD
-	comf	Temp1,F
-	comf	Temp1+1,F
-	incfsz	Temp1,F
+;  Get 1/128 of BaseMAD and add 1/7 of this to the result which should give
+; should give 1/112 of BaseMAD. 1/7 = 1/8 + 1/64 + 1/512 
+; After a contact even or other signal injection, BaseMAD may get too large
+; so it should be limited to a save level
+
+	movlw	LOW(SafeMAD)
+	subwf	BaseMAD,W
+	movlw	High(SafeMAD)
+	subwfb	BaseMAD+1,W
+	andlw	b'10000000'
+	btfss	STATUS,Z
+	goto	Simple
+	movlw	LOW(SafeMAD)
+	movwf	BaseMAD
+	movlw	HIGH(SafeMAD)
+	movwf	BaseMAD+1
+
+Simple
+	swapf	BaseMAD+1,W
+	andlw	b'00001111'
+	movwf	Temp1
+	lsrf	Temp1,F
+
+	lsrf	BaseMAD+1,W
+	movwf	Temp1+1
+	lsrf	Temp1+1,W
+	addwf	Temp1,F
+		
+	clrf	Temp1+1
+	lslf	BaseMAD,W
+	rlf	BaseMAD+1,W
+	lslf	Temp1+1,F
+	addwf	Temp1,F
+	btfsc	STATUS,C
 	incf	Temp1+1,F
-
-; Subtract the element difference from the baseline MAD total
-
-SubMAD
-	movf	Temp1,W
+		
 	subwf	BaseMAD,F
 	movf	Temp1+1,W
-	subwfb	BaseMAD,F	
+	subwfb	BaseMAD+1,F
 
 ; Get the data from the ADC and put it in the array. Add this value to 
 ; the trigger total (TrigTot) at the same time
 	
-	movf	ADRESL,W
+Mark1	movf	ADRESL,W
 	movwi	0[FSR0]
 	addwf	TrigTot,F
 	movf	ADRESH,W
@@ -546,7 +583,6 @@ Evens
 	goto	BendOK
 	incf	Temp1+1,F
 BendOK
-
 	movlw	LOW(Bend)
 	subwf	Temp1,F
 	movlw	HIGH(Bend)
@@ -559,6 +595,7 @@ BendOK
 SeekT1
 	movlw	LOW(T1)
 	subwf	Temp1,W
+
 	movlw	HIGH(T1)
 	subwfb	Temp1+1,W
 	andlw	b'10000000'
