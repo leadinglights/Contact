@@ -491,9 +491,11 @@ TooHigh
 	subwf	TrigTot,W
 	movlw	HIGH(Backstop)
 	subwfb	TrigTot+1,W
-	movlw	b'00000001'		; signal for backstop
-	btfsc	STATUS,C
-	goto	Amber		; Above BackStop limit
+	movlw	b'00000001'	; signal for backstop
+	btfss	STATUS,C
+	goto	MainSeek
+	movlw	1		; Amber LED
+	goto	Report		; Above BackStop limit
 
 ; The main seek routine when there is not blanking time (during LED)
 ; The value needed is present value of TrigTot above BaseLine and will
@@ -666,12 +668,12 @@ Report
 	goto	Green
 	goto	GoTmrs
 Both
-	bcf	LATC,RC0
-Amber
 	bcf	LATC,RC1
+Amber
+	bcf	LATC,RC0
 	goto	GoTmrs
 Green
-	bcf	LATC,RC0
+	bcf	LATC,RC1
 	bsf	LATA,RA5
 GoTmrs
 	clrf	TCount	; clear for next ramp
