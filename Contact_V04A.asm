@@ -1,3 +1,5 @@
+
+
 	;;Version history
 ; V04 replaces V03 as the baseline mAD calculations were unrecoverably screwed
 ; In this version the oldesr 112 readings are used to establish a true running
@@ -488,7 +490,8 @@ TooHigh
 	movlw	LOW(Backstop)
 	subwf	TrigTot,W
 	movlw	HIGH(Backstop)
-	subwfb	TrigTot+1,W	
+	subwfb	TrigTot+1,W
+	movlw	b'00000001'		; signal for backstop
 	btfsc	STATUS,C
 	goto	Amber		; Above BackStop limit
 
@@ -595,12 +598,13 @@ Evens
 	incf	Temp1+1,F
 BendOK
 	movlw	LOW(Bend)
-	subwf	Temp1,F
+	subwf	Temp1,W
 	movlw	HIGH(Bend)
-	subwf	Temp1+1,F
-	btfss	Temp1+1,7
-	goto	Green
-	goto	Both	; delay etc. but no LEDs
+	subwfb	Temp1+1,W
+	andlw	b'10000000'
+	btfss	STATUS,Z
+	movlw	b'00000010'
+	goto	Report
 	
 	; Look for T1 (first trigger point). Entered with
 	; Temp1 = TrigTot - BaseLin
@@ -622,11 +626,14 @@ SeekT1
 	movlw	HIGH(Spike)
 	subwfb	Temp1+1,W
 	andlw	b'10000000'
-	btfsc	STATUS,Z	; Equal or positive if T1<Temp1
-	goto	GoTmrs	; time without LEDs
+	btfss	STATUS,Z	; Equal or positive if T1<Temp1
+	goto	Gap
+	movlw	b'00000011'	; no LEDs
+	goto	Report
 	
 ; Start the cycle counter between T1 and T2 and copy TrigTot into TFirst
 
+Gap
 	movf	TrigTot,W
 	movwf	TFirst
 	movf	TrigTot+1,W
@@ -635,22 +642,37 @@ SeekT1
 	movwf	TCount
 	goto	Cycle
 
-; Turn on green led, signal host for contact and good and start timer
+; Turn on lEDS and signals to host depending on entry
+; If backstop then amber LED, signal contact but don't signal quality
+; If contact passes all tests than green LED and quality signal
+; If contact within high & low limits but not linear then both LEDS
+; but no quality signal
+; If signal is too rapid, too slow or bad baseline then contact but
+; no quality signal
+; 
+; Entry with code in W
+; W=00 Both LEDs, no Quality signal 
+; W=01 Amber LED no Quality signal
+; W=10 Green LED, send Quality signal
+; W=11 No LEDs, no quality signal but blanking period still needed
 
-Green
+Report
 	banksel	LATC
-	bcf	LATC,RC1	; Turn on green LED
-	bsf	LATA,RA2	; Contact seen
-	bsf	LATA,RA5	; and contact is good. send signal to host
-	movlw	1	; for debugging. which LED
-	goto	GoTmrs	; continue looking
+	bsf	LATA,RA2	; Send contact seen
+	andlw	b'00000011'	; for safety, only bits that count
+	brw
+	goto	Both
+	goto	Amber
+	goto	Green
+	goto	GoTmrs
 Both
-	banksel	LATC
-	bcf	LATC,RC1	; Green LED
+	bcf	LATC,RC0
 Amber
-	banksel	LATC
-	bcf	LATC,RC0	; Turn on amber LED
-	bsf	LATA,RA2	; Contact, but not quality
+	bcf	LATC,RC1
+	goto	GoTmrs
+Green
+	bcf	LATC,RC0
+	bsf	LATA,RA5
 GoTmrs
 	clrf	TCount	; clear for next ramp
 	movlw	SigTim
